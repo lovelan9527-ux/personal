@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>福林少棒｜個人代購帳</title>
+  <style>
+    :root{
+      --bg:#eef3f8;
+      --surface:#ffffff;
+      --surface-2:#f8fafc;
+      --text:#14213d;
+      --muted:#64748b;
+      --line:#d9e2ec;
+      --primary:#0f3d66;
+      --primary-2:#155e9f;
+      --accent:#18a0fb;
+      --accent-soft:#e8f5ff;
+      --danger:#d92d20;
+      --danger-soft:#fff1f0;
+      --success:#078c4c;
+      --success-soft:#ecfdf3;
+      --warning:#b7791f;
+      --shadow:0 18px 45px rgba(15,61,102,.13);
+      --shadow-soft:0 8px 22px rgba(15,61,102,.08);
+      --radius:20px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      background:
+        radial-gradient(circle at top left, rgba(24,160,251,.22), transparent 34%),
+        linear-gradient(180deg,#f8fbff 0%,var(--bg) 42%,#e9eff6 100%);
+      color:var(--text);
+      font-family:"Microsoft JhengHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      line-height:1.45;
+    }
+    header{
+      background:linear-gradient(135deg,#0f3d66 0%,#155e9f 62%,#18a0fb 100%);
+      color:#fff;
+      padding:24px 18px 28px;
+      box-shadow:0 12px 38px rgba(15,61,102,.2);
+      position:relative;
+      overflow:hidden;
+    }
+    header:after{
+      content:"";
+      position:absolute;
+      width:320px;height:320px;right:-120px;top:-150px;
+      background:rgba(255,255,255,.14);
+      border-radius:50%;
+    }
+    .header-inner{max-width:1180px;margin:0 auto;position:relative;z-index:1}
+    h1{font-size:26px;letter-spacing:.5px;margin:0 0 8px;font-weight:900}
+    .sub{font-size:14px;color:rgba(255,255,255,.84)}
+    .admin-bar{margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .admin-bar input{max-width:180px;background:rgba(255,255,255,.95)}
+    .login-status{font-size:13px;font-weight:900;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:9px 12px;border-radius:999px}
+    .sync-status{font-size:12px;font-weight:800;padding:7px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;gap:6px}
+    .sync-status.ok{background:rgba(7,140,76,.22);color:#b7fdd8}
+    .sync-status.saving{background:rgba(255,200,0,.18);color:#ffe97a}
+    .sync-status.error{background:rgba(217,45,32,.22);color:#ffc9c4}
+    .admin-only{display:none!important}
+    body.admin-mode .admin-only{display:inline-flex!important}
+    body.admin-mode .tab.admin-only{display:block!important}
+    body.admin-mode th.admin-only,
+    body.admin-mode td.admin-only{display:table-cell!important}
+    body:not(.admin-mode) .tabs{grid-template-columns:1fr}
+    body:not(.admin-mode) #entryPanel,
+    body:not(.admin-mode) #peoplePanel{display:none!important}
+    main{max-width:1180px;margin:-18px auto 40px;padding:0 16px 24px;position:relative;z-index:2}
+
+
+
+    .tabs{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+      margin-bottom:16px;
+      background:rgba(255,255,255,.68);
+      border:1px solid rgba(255,255,255,.75);
+      backdrop-filter:blur(10px);
+      padding:8px;
+      border-radius:18px;
+      box-shadow:var(--shadow-soft);
+    }
+    .tab{
+      border:0;
+      background:transparent;
+      color:#17496f;
+      padding:13px 16px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:15px;
+      transition:.16s ease;
+    }
+    .tab:hover{background:#eef7ff}
+    .tab.active{
+      background:linear-gradient(135deg,var(--primary),var(--primary-2));
+      color:#fff;
+      box-shadow:0 10px 22px rgba(15,61,102,.23);
+    }
+
+    .card{
+      background:rgba(255,255,255,.96);
+      border:1px solid rgba(216,226,236,.9);
+      border-radius:var(--radius);
+      padding:18px;
+      margin-bottom:16px;
+      box-shadow:var(--shadow-soft);
+    }
+    .main-card{box-shadow:var(--shadow)}
+    .card-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .card h2{font-size:18px;margin:0;color:var(--primary);font-weight:900}
+    .eyebrow{font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.8px;text-transform:uppercase}
+    .divider{height:1px;background:var(--line);margin:14px 0}
+
+    .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+    .summary-card{
+      background:linear-gradient(180deg,#fff,#f8fbff);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:15px;
+      box-shadow:0 10px 26px rgba(15,61,102,.07);
+      min-height:92px;
+    }
+    .summary-card .label{font-size:12px;color:var(--muted);font-weight:800;margin-bottom:7px}
+    .summary-card .value{font-size:22px;color:var(--primary);font-weight:950;word-break:break-word}
+    .summary-card .value.red{color:var(--danger)}
+    .summary-card .value.green{color:var(--success)}
+
+    .edit-zone{
+      background:var(--surface-2);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:14px;
+    }
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
+    .grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    label{display:block;font-size:13px;color:#334155;font-weight:900;margin-bottom:6px}
+    input,select,textarea{
+      width:100%;
+      border:1px solid #cbd8e6;
+      border-radius:13px;
+      padding:11px 12px;
+      font-size:15px;
+      background:#fff;
+      color:var(--text);
+      outline:none;
+      transition:border .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    input:focus,select:focus,textarea:focus{
+      border-color:var(--accent);
+      box-shadow:0 0 0 4px rgba(24,160,251,.14);
+    }
+    textarea{min-height:44px;resize:vertical}
+
+    .btn{
+      border:0;
+      background:linear-gradient(135deg,var(--primary),var(--primary-2));
+      color:#fff;
+      font-weight:900;
+      border-radius:13px;
+      padding:11px 15px;
+      cursor:pointer;
+      font-size:15px;
+      min-height:42px;
+      white-space:nowrap;
+      box-shadow:0 9px 18px rgba(15,61,102,.18);
+      transition:.15s ease;
+    }
+    .btn:hover{transform:translateY(-1px);box-shadow:0 12px 22px rgba(15,61,102,.23)}
+    .btn.secondary{background:#fff;color:var(--primary);border:1px solid #cbd8e6;box-shadow:none}
+    .btn.secondary:hover{background:#f4f9ff}
+    .btn.danger{background:var(--danger-soft);color:#b42318;border:1px solid #ffd7d3;box-shadow:none}
+    .btn.green{background:linear-gradient(135deg,#078c4c,#0aa15a)}
+    .btn.small{padding:7px 10px;font-size:13px;border-radius:10px;min-height:34px}
+    .btn.file{position:relative;overflow:hidden}
+    .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+    .hint{font-size:13px;color:var(--muted);line-height:1.55}
+    .people-box{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:9px;border:1px solid var(--line);border-radius:16px;padding:11px;background:#fff;min-height:50px}
+    .person-check{display:flex;align-items:center;gap:8px;border:1px solid #d6e4f2;background:#fbfdff;border-radius:12px;padding:10px;cursor:pointer;font-weight:800;color:#27425d}
+    .person-check input{width:auto;margin:0;accent-color:var(--primary-2)}
+    .person-check:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--primary)}
+
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+    table{border-collapse:collapse;width:100%;min-width:780px}
+    th,td{border-bottom:1px solid var(--line);padding:11px 10px;text-align:left;font-size:14px;vertical-align:middle}
+    th{background:#eef6ff;color:#103c63;font-weight:950;white-space:nowrap;position:sticky;top:0;z-index:1}
+    tbody tr:hover{background:#fbfdff}
+    tr:last-child td{border-bottom:0}
+    .money{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+    .income{color:var(--success);font-weight:900}
+    .expense{color:var(--danger);font-weight:900}
+    .negative{color:var(--danger)!important}
+    .actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-start}
+    .hidden{display:none!important}
+    .topline{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--primary);border:1px solid #cfe3f8;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}
+    .empty{padding:22px;text-align:center;color:var(--muted)}
+    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .mobile-note{display:none}
+
+    @media(max-width:900px){
+      main{padding:0 12px 22px}
+      .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid.two{grid-template-columns:1fr}
+      table{min-width:720px}
+      .tabs{grid-template-columns:1fr;gap:6px}
+      .tab{text-align:left}
+    }
+    @media(max-width:560px){
+      header{padding:20px 14px 26px}
+      h1{font-size:22px}
+      .sub{font-size:13px}
+      .card{padding:14px;border-radius:18px}
+      .summary-grid,.grid{grid-template-columns:1fr}
+      .summary-card{min-height:auto}
+      .summary-card .value{font-size:20px}
+      .toolbar{width:100%}
+      .toolbar .btn{flex:1}
+      .btn{width:100%;padding:12px 14px}
+      .btn.small{width:auto;flex:0 0 auto}
+      .people-box{grid-template-columns:1fr}
+      table{min-width:690px}
+      th,td{padding:10px 8px}
+      .mobile-note{display:block;margin-top:8px}
+    }
+    @media print{
+      header,.tabs,#entryPanel,#peoplePanel,.no-print{display:none!important}
+      body{background:#fff}
+      main{max-width:none;margin:0;padding:0}
+      .card,.summary-card{box-shadow:none;border:0;padding:0}
+      .summary-grid{grid-template-columns:repeat(4,1fr)}
+      .table-wrap{border:0;box-shadow:none}
+      th,td{font-size:12px;padding:6px}
+      .actions{display:none!important}
+    }
+  </style>
+</head>
+<body>
+
+
+
+<header>
+  <div class="header-inner">
+    <h1>福林少棒｜個人代購帳</h1>
+    <div class="sub">預設為家長查詢模式；登入後台管理員後，才能新增收支、編輯、刪除、匯入資料與新增人員。</div>
+    <div class="admin-bar no-print">
+      <span class="login-status" id="loginStatus">目前模式：查詢模式</span>
+      <span class="sync-status ok" id="syncStatus">☁️ 雲端同步</span>
+      <input id="adminPassword" type="password" placeholder="後台密碼">
+      <button class="btn secondary small" id="adminLoginBtn" type="button">管理員登入</button>
+      <button class="btn secondary small hidden" id="adminLogoutBtn" type="button">登出</button>
+      <button class="btn secondary small admin-only" id="refreshBtn" type="button">🔄 重新讀取</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="tabs no-print">
+    <button class="tab active" data-panel="reportPanel">個人報表</button>
+    <button class="tab admin-only" data-panel="entryPanel">新增收支</button>
+    <button class="tab admin-only" data-panel="peoplePanel">新增人員</button>
+  </div>
+
+  <section id="entryPanel" class="panel card main-card hidden">
+    <div class="card-title">
+      <div>
+        <div class="eyebrow">快速記帳</div>
+        <h2>新增收支</h2>
+      </div>
+      <span class="pill">可複選人員</span>
+    </div>
+    <div class="edit-zone">
+      <div class="grid">
+        <div>
+          <label for="txDate">日期</label>
+          <input id="txDate" type="date">
+        </div>
+        <div>
+          <label for="txKind">類型</label>
+          <select id="txKind">
+            <option value="expense">支出</option>
+            <option value="income">收入</option>
+          </select>
+        </div>
+        <div>
+          <label for="txItem">項目</label>
+          <select id="txItem"></select>
+        </div>
+        <div>
+          <label for="txAmount">金額（每人）</label>
+          <input id="txAmount" type="number" min="0" step="1" placeholder="例如 100">
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:12px">
+        <div>
+          <label for="txNote">說明 / 備註</label>
+          <input id="txNote" type="text" placeholder="例如 午餐、牛奶、好市多等">
+        </div>
+        <div>
+          <label>選擇人員</label>
+          <div class="toolbar">
+            <button class="btn secondary small" type="button" id="selectAllPeople">全選</button>
+            <button class="btn secondary small" type="button" id="clearPeople">清除</button>
+          </div>
+        </div>
+      </div>
+      <div id="peopleCheckboxes" class="people-box" style="margin-top:10px"></div>
+      <div class="toolbar" style="margin-top:14px">
+        <button class="btn" id="addTxBtn">新增收支</button>
+        <button class="btn secondary hidden" id="cancelTxEditBtn" type="button">取消編輯</button>
+        <span class="hint">多人一起購買時，勾選多位人員後輸入一次，系統會各自新增一筆明細。</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="reportPanel" class="panel">
+    <div class="card main-card">
+      <div class="card-title">
+        <div>
+          <div class="eyebrow">重要數據</div>
+          <h2>個人報表</h2>
+        </div>
+        <div class="toolbar no-print">
+          <button class="btn secondary admin-only" id="importCsvBtn">匯入 CSV</button>
+          <input id="importCsvInput" type="file" accept=".csv,text/csv" class="hidden">
+          <button class="btn secondary" id="exportCsvBtn">匯出 CSV</button>
+          <button class="btn secondary" onclick="window.print()">列印 / 另存 PDF</button>
+        </div>
+      </div>
+      <div class="grid no-print" style="margin-bottom:14px">
+        <div>
+          <label for="reportPerson">選擇人員</label>
+          <select id="reportPerson"></select>
+        </div>
+        <div>
+          <label for="reportStartDate">起始日期</label>
+          <input id="reportStartDate" type="date">
+        </div>
+        <div>
+          <label for="reportEndDate">結束日期</label>
+          <input id="reportEndDate" type="date">
+        </div>
+        <div>
+          <label for="reportKeyword">搜尋說明</label>
+          <input id="reportKeyword" type="text" placeholder="可搜尋項目或備註">
+        </div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-card"><div class="label">姓名</div><div class="value" id="statName">-</div></div>
+        <div class="summary-card"><div class="label">期初餘額</div><div class="value" id="statInitial">NT$0</div></div>
+        <div class="summary-card"><div class="label">收入合計</div><div class="value green" id="statIncome">NT$0</div></div>
+        <div class="summary-card"><div class="label">支出合計</div><div class="value red" id="statExpense">NT$0</div></div>
+      </div>
+      <div class="summary-grid" style="grid-template-columns:repeat(1,minmax(0,1fr));margin-bottom:0">
+        <div class="summary-card"><div class="label">目前餘額</div><div class="value" id="statBalance">NT$0</div></div>
+      </div>
+      <div class="hint no-print" style="margin-top:10px">管理員登入後可使用匯入 CSV；一般模式僅可查看、查詢、匯出與列印報表。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <div class="eyebrow">明細表</div>
+          <h2>收支明細</h2>
+        </div>
+        <span class="pill no-print" id="rowCountPill">0 筆</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>項目</th>
+              <th>說明</th>
+              <th class="money">收入</th>
+              <th class="money">支出</th>
+              <th class="money">餘額</th>
+              <th class="no-print admin-only">操作</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody"></tbody>
+        </table>
+      </div>
+      <div class="hint mobile-note no-print">手機版可左右滑動查看完整表格。</div>
+    </div>
+  </section>
+
+  <section id="peoplePanel" class="panel card main-card hidden">
+    <div class="card-title">
+      <div>
+        <div class="eyebrow">名單管理</div>
+        <h2>新增人員</h2>
+      </div>
+      <span class="pill" id="personCount">0 人</span>
+    </div>
+    <div class="edit-zone">
+      <div class="grid">
+        <div>
+          <label for="personName">姓名</label>
+          <input id="personName" type="text" placeholder="例如 紀耘傑">
+        </div>
+        <div>
+          <label for="personInitial">期初餘額</label>
+          <input id="personInitial" type="number" step="1" placeholder="例如 1000">
+        </div>
+        <div>
+          <button class="btn" id="savePersonBtn">新增人員</button>
+        </div>
+        <div>
+          <button class="btn secondary hidden" id="cancelPersonEditBtn" type="button">取消編輯</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:8px">期初餘額會加上後續收入、扣掉支出，自動算出目前餘額。</div>
+    </div>
+    <div class="divider"></div>
+    <div class="topline">
+      <h2 style="margin:0">人員清單</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>姓名</th>
+            <th class="money">期初餘額</th>
+            <th class="money">目前餘額</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="peopleBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+// =====================================================
+// ☁️ JSONBin.io 雲端同步設定
+// =====================================================
+const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
+const STORE_KEY = 'fulin_multi_player_simple_ledger_v4'; // 本機備份用
+
+// ── 連線設定（所有裝置共用） ──
+const cloudApiKey = '$2a$10$Je0WLLw7Zqcc8dMCjFo7GudCxbRqOitvn06.kROEsTwlMSXu/XqqW';
+const cloudBinId  = '6a41e561da38895dfe0ddf4e';
+const cloudMode   = true;
+
+let isSyncing = false;
+
+// =====================================================
+// Sync status UI
+// =====================================================
+function setSyncStatus(type, text){
+  const el = document.getElementById('syncStatus');
+  el.className = 'sync-status ' + type;
+  el.textContent = text;
+}
+
+// =====================================================
+// 從 JSONBin 讀取資料
+// =====================================================
+async function cloudLoad(){
+  if(!cloudMode) return null;
+  setSyncStatus('saving','⏳ 讀取中…');
+  try{
+    const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
+      headers:{ 'X-Master-Key': cloudApiKey, 'X-Bin-Meta': 'false' }
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    setSyncStatus('ok','☁️ 雲端同步');
+    return data;
+  }catch(e){
+    setSyncStatus('error','❌ 讀取失敗');
+    console.error('cloudLoad', e);
+    return null;
+  }
+}
+
+// =====================================================
+// 寫入資料到 JSONBin（有 debounce 防止過多請求）
+// =====================================================
+let saveTimer = null;
+async function cloudSave(stateToSave){
+  if(!cloudMode){ localSave(stateToSave); return; }
+  localSave(stateToSave); // 先存本機備份
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    isSyncing = true;
+    setSyncStatus('saving','⏫ 儲存中…');
+    try{
+      const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}`, {
+        method: 'PUT',
+        headers:{
+          'Content-Type': 'application/json',
+          'X-Master-Key': cloudApiKey
+        },
+        body: JSON.stringify(stateToSave)
+      });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      setSyncStatus('ok','☁️ 已同步');
+    }catch(e){
+      setSyncStatus('error','❌ 儲存失敗');
+      console.error('cloudSave', e);
+    }finally{
+      isSyncing = false;
+    }
+  }, 600);
+}
+
+function localSave(s){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }catch(e){}
+}
+function localLoad(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+
+// =====================================================
+// App State
+// =====================================================
+const incomeItems = ['儲值','退款'];
+const expenseItems = ['餐點','其他'];
+let state = { people:[], txs:[] };
+let editingPersonId = null;
+let editingTxId = null;
+let isAdmin = sessionStorage.getItem('fulin_ledger_admin') === '1';
+
+function seedState(){
+  const personId = uid();
+  return {
+    people:[{id:personId,name:'紀耘傑',initial:1028}],
+    txs:[
+      {id:uid(),personId,date:'2026-04-28',kind:'expense',item:'餐點',note:'飲料',amount:64},
+      {id:uid(),personId,date:'2026-04-29',kind:'expense',item:'其他',note:'導覽',amount:150},
+      {id:uid(),personId,date:'2026-05-01',kind:'expense',item:'餐點',note:'牛排',amount:210},
+      {id:uid(),personId,date:'2026-05-02',kind:'expense',item:'餐點',note:'排骨飯',amount:130},
+      {id:uid(),personId,date:'2026-05-01',kind:'expense',item:'餐點',note:'晚餐便當',amount:260},
+      {id:uid(),personId,date:'2026-05-09',kind:'expense',item:'餐點',note:'午餐',amount:110},
+      {id:uid(),personId,date:'2026-05-09',kind:'expense',item:'餐點',note:'點心X2',amount:50},
+      {id:uid(),personId,date:'2026-05-16',kind:'expense',item:'餐點',note:'午餐',amount:100},
+      {id:uid(),personId,date:'2026-05-19',kind:'income',item:'儲值',note:'水蜜桃',amount:250},
+      {id:uid(),personId,date:'2026-05-19',kind:'expense',item:'餐點',note:'油麵',amount:35},
+      {id:uid(),personId,date:'2026-05-20',kind:'expense',item:'餐點',note:'芒果',amount:110},
+      {id:uid(),personId,date:'2026-05-29',kind:'income',item:'儲值',note:'好市多等',amount:1244},
+      {id:uid(),personId,date:'2026-05-30',kind:'expense',item:'餐點',note:'午餐',amount:140},
+      {id:uid(),personId,date:'2026-05-31',kind:'income',item:'儲值',note:'水果+牛',amount:613},
+      {id:uid(),personId,date:'2026-06-11',kind:'expense',item:'餐點',note:'米漢堡+關饌聚',amount:256},
+      {id:uid(),personId,date:'2026-06-16',kind:'income',item:'儲值',note:'水果',amount:1012},
+      {id:uid(),personId,date:'2026-06-19',kind:'expense',item:'餐點',note:'午餐',amount:165},
+      {id:uid(),personId,date:'2026-06-26',kind:'expense',item:'餐點',note:'義美牛奶',amount:540}
+    ]
+  };
+}
+
+// =====================================================
+// 初始化
+// =====================================================
+async function initApp(){
+  const remote = await cloudLoad();
+  if(remote && (remote.people || remote.txs)){
+    state = remote;
+    localSave(state);
+  } else {
+    const local = localLoad();
+    state = local || seedState();
+    await cloudSave(state);
+  }
+
+  document.getElementById('txDate').value = today();
+  applyAdminMode();
+  renderItemOptions();
+  renderAll();
+}
+
+document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+  const remote = await cloudLoad();
+  if(remote && (remote.people || remote.txs)){
+    state = remote;
+    localSave(state);
+    renderAll();
+    alert('已從雲端重新讀取最新資料！');
+  } else {
+    alert('無法從雲端讀取，請確認連線設定。');
+  }
+});
+
+// =====================================================
+// save / uid / helpers（原有邏輯不變）
+// =====================================================
+function save(){ cloudSave(state); }
+function uid(){ return 'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function money(n){
+  n = Number(n||0);
+  const sign = n < 0 ? '-' : '';
+  return sign + 'NT$' + Math.abs(n).toLocaleString('zh-TW');
+}
+function shortDate(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  if(!m || !d) return iso;
+  return `${Number(m)}/${Number(d)}`;
+}
+function today(){ return new Date().toISOString().slice(0,10); }
+function calcPersonRows(personId){
+  const p = state.people.find(x=>x.id===personId);
+  if(!p) return {rows:[],income:0,expense:0,balance:0};
+  const rows = state.txs.filter(t=>t.personId===personId);
+  let bal = Number(p.initial||0), income=0, expense=0;
+  const withBal = rows.map(t=>{
+    if(t.kind==='income'){ bal += Number(t.amount||0); income += Number(t.amount||0); }
+    else { bal -= Number(t.amount||0); expense += Number(t.amount||0); }
+    return {...t,balance:bal};
+  });
+  return {rows:withBal,income,expense,balance:bal};
+}
+function currentBalance(personId){ return calcPersonRows(personId).balance; }
+
+function setPanel(id){
+  if(!isAdmin && id !== 'reportPanel') id = 'reportPanel';
+  document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.panel===id));
+  renderAll();
+}
+
+document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>setPanel(btn.dataset.panel)));
+document.getElementById('txKind').addEventListener('change', renderItemOptions);
+document.getElementById('addTxBtn').addEventListener('click', addOrUpdateTx);
+document.getElementById('cancelTxEditBtn').addEventListener('click', cancelTxEdit);
+document.getElementById('selectAllPeople').addEventListener('click',()=>{
+  document.querySelectorAll('#peopleCheckboxes input[type=checkbox]').forEach(c=>c.checked=true);
+});
+document.getElementById('clearPeople').addEventListener('click',()=>{
+  document.querySelectorAll('#peopleCheckboxes input[type=checkbox]').forEach(c=>c.checked=false);
+});
+document.getElementById('savePersonBtn').addEventListener('click', addOrUpdatePerson);
+document.getElementById('cancelPersonEditBtn').addEventListener('click', cancelPersonEdit);
+document.getElementById('reportPerson').addEventListener('change', renderReport);
+document.getElementById('reportKeyword').addEventListener('input', renderReport);
+document.getElementById('reportStartDate').addEventListener('change', renderReport);
+document.getElementById('reportEndDate').addEventListener('change', renderReport);
+document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+document.getElementById('importCsvBtn').addEventListener('click', ()=>document.getElementById('importCsvInput').click());
+document.getElementById('importCsvInput').addEventListener('change', importCsv);
+document.getElementById('adminLoginBtn').addEventListener('click', adminLogin);
+document.getElementById('adminLogoutBtn').addEventListener('click', adminLogout);
+document.getElementById('adminPassword').addEventListener('keydown', e=>{ if(e.key==='Enter') adminLogin(); });
+
+// =====================================================
+// Render functions（原有，完全不變）
+// =====================================================
+function renderItemOptions(){
+  const kind = document.getElementById('txKind').value;
+  const items = kind==='income' ? incomeItems : expenseItems;
+  const select = document.getElementById('txItem');
+  const old = select.value;
+  select.innerHTML = items.map(x=>`<option value="${x}">${x}</option>`).join('');
+  if(items.includes(old)) select.value = old;
+}
+function renderAll(){
+  renderPeopleCheckboxes();
+  renderPeopleTable();
+  renderReportSelect();
+  renderReport();
+}
+function renderPeopleCheckboxes(){
+  const box = document.getElementById('peopleCheckboxes');
+  if(!state.people.length){
+    box.innerHTML = '<div class="empty">尚未新增人員，請先到「新增人員」建立名單。</div>';
+    return;
+  }
+  box.innerHTML = state.people.map(p=>`
+    <label class="person-check">
+      <input type="checkbox" value="${p.id}"> ${escapeHtml(p.name)}
+    </label>
+  `).join('');
+}
+function renderPeopleTable(){
+  const body = document.getElementById('peopleBody');
+  document.getElementById('personCount').textContent = `${state.people.length} 人`;
+  if(!state.people.length){ body.innerHTML = '<tr><td colspan="4" class="empty">尚無人員</td></tr>'; return; }
+  body.innerHTML = state.people.map(p=>{
+    const bal = currentBalance(p.id);
+    return `<tr>
+      <td>${escapeHtml(p.name)}</td>
+      <td class="money">${money(p.initial)}</td>
+      <td class="money ${bal<0?'negative':''}">${money(bal)}</td>
+      <td><div class="actions">
+        <button class="btn secondary small" onclick="editPerson('${p.id}')">編輯</button>
+        <button class="btn danger small" onclick="deletePerson('${p.id}')">刪除</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+function renderReportSelect(){
+  const sel = document.getElementById('reportPerson');
+  const old = sel.value;
+  sel.innerHTML = state.people.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if(state.people.some(p=>p.id===old)) sel.value = old;
+}
+function renderReport(){
+  const sel = document.getElementById('reportPerson');
+  const personId = sel.value || (state.people[0] && state.people[0].id);
+  if(personId) sel.value = personId;
+  const p = state.people.find(x=>x.id===personId);
+  const body = document.getElementById('reportBody');
+  if(!p){
+    document.getElementById('statName').textContent = '-';
+    document.getElementById('statInitial').textContent = money(0);
+    document.getElementById('statIncome').textContent = money(0);
+    document.getElementById('statExpense').textContent = money(0);
+    document.getElementById('statBalance').textContent = money(0);
+    document.getElementById('rowCountPill').textContent = '0 筆';
+    body.innerHTML = '<tr><td colspan="7" class="empty">尚無人員</td></tr>';
+    return;
+  }
+  const result = calcPersonRows(personId);
+  const filtered = getFilteredRows(personId);
+  document.getElementById('statName').textContent = p.name;
+  document.getElementById('statInitial').textContent = money(p.initial);
+  document.getElementById('statIncome').textContent = money(result.income);
+  document.getElementById('statExpense').textContent = money(result.expense);
+  const balEl = document.getElementById('statBalance');
+  balEl.textContent = money(result.balance);
+  balEl.classList.toggle('red', result.balance<0);
+  document.getElementById('rowCountPill').textContent = `${filtered.length} 筆`;
+  if(!filtered.length){ body.innerHTML = '<tr><td colspan="7" class="empty">沒有收支明細</td></tr>'; return; }
+  body.innerHTML = filtered.map(t=>`
+    <tr>
+      <td>${shortDate(t.date)}</td>
+      <td>${escapeHtml(t.item)}</td>
+      <td>${escapeHtml(t.note||'')}</td>
+      <td class="money income">${t.kind==='income'?money(t.amount):''}</td>
+      <td class="money expense">${t.kind==='expense'?money(t.amount):''}</td>
+      <td class="money ${t.balance<0?'negative':''}">${money(t.balance)}</td>
+      <td class="no-print admin-only"><div class="actions">
+        <button class="btn secondary small" onclick="editTx('${t.id}')">編輯</button>
+        <button class="btn danger small" onclick="deleteTx('${t.id}')">刪除</button>
+      </div></td>
+    </tr>
+  `).join('');
+}
+function requireAdmin(){
+  if(isAdmin) return true;
+  alert('此功能僅限後台管理員操作，請先登入。');
+  setPanel('reportPanel');
+  return false;
+}
+function applyAdminMode(){
+  document.body.classList.toggle('admin-mode', isAdmin);
+  document.getElementById('loginStatus').textContent = isAdmin ? '目前模式：後台管理員' : '目前模式：查詢模式';
+  document.getElementById('adminPassword').classList.toggle('hidden', isAdmin);
+  document.getElementById('adminLoginBtn').classList.toggle('hidden', isAdmin);
+  document.getElementById('adminLogoutBtn').classList.toggle('hidden', !isAdmin);
+  if(!isAdmin) setPanel('reportPanel');
+}
+function adminLogin(){
+  const pass = document.getElementById('adminPassword').value;
+  if(pass !== '1111'){ alert('密碼錯誤'); return; }
+  isAdmin = true;
+  sessionStorage.setItem('fulin_ledger_admin','1');
+  document.getElementById('adminPassword').value = '';
+  applyAdminMode();
+}
+function adminLogout(){
+  isAdmin = false;
+  sessionStorage.removeItem('fulin_ledger_admin');
+  cancelTxEdit(false);
+  cancelPersonEdit(false);
+  applyAdminMode();
+}
+function getFilteredRows(personId){
+  const keyword = document.getElementById('reportKeyword').value.trim();
+  const startDate = document.getElementById('reportStartDate').value;
+  const endDate = document.getElementById('reportEndDate').value;
+  const result = calcPersonRows(personId);
+  return result.rows.filter(t=>{
+    const matchKeyword = !keyword || `${t.item} ${t.note}`.includes(keyword);
+    const matchStart = !startDate || t.date >= startDate;
+    const matchEnd = !endDate || t.date <= endDate;
+    return matchKeyword && matchStart && matchEnd;
+  });
+}
+function addOrUpdatePerson(){
+  if(!requireAdmin()) return;
+  const name = document.getElementById('personName').value.trim();
+  const initial = Number(document.getElementById('personInitial').value || 0);
+  if(!name){ alert('請輸入姓名'); return; }
+  if(editingPersonId){
+    const p = state.people.find(x=>x.id===editingPersonId);
+    if(p){ p.name = name; p.initial = initial; }
+    cancelPersonEdit(false);
+  }else{
+    state.people.push({id:uid(),name,initial});
+    clearPersonForm();
+  }
+  save(); renderAll();
+}
+function clearPersonForm(){
+  document.getElementById('personName').value = '';
+  document.getElementById('personInitial').value = '';
+}
+function cancelPersonEdit(shouldRender=true){
+  editingPersonId = null;
+  clearPersonForm();
+  document.getElementById('savePersonBtn').textContent = '新增人員';
+  document.getElementById('cancelPersonEditBtn').classList.add('hidden');
+  if(shouldRender) renderAll();
+}
+window.editPerson = function(id){
+  if(!requireAdmin()) return;
+  const p = state.people.find(x=>x.id===id);
+  if(!p) return;
+  editingPersonId = id;
+  document.getElementById('personName').value = p.name;
+  document.getElementById('personInitial').value = p.initial;
+  document.getElementById('savePersonBtn').textContent = '儲存修改';
+  document.getElementById('cancelPersonEditBtn').classList.remove('hidden');
+  setPanel('peoplePanel');
+}
+window.deletePerson = function(id){
+  if(!requireAdmin()) return;
+  const p = state.people.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`確定刪除「${p.name}」？此人員的所有收支也會一起刪除。`)) return;
+  state.people = state.people.filter(x=>x.id!==id);
+  state.txs = state.txs.filter(x=>x.personId!==id);
+  save(); renderAll();
+}
+function addOrUpdateTx(){
+  if(!requireAdmin()) return;
+  const date = document.getElementById('txDate').value;
+  const kind = document.getElementById('txKind').value;
+  const item = document.getElementById('txItem').value;
+  const amount = Number(document.getElementById('txAmount').value || 0);
+  const note = document.getElementById('txNote').value.trim();
+  if(!date){ alert('請選擇日期'); return; }
+  if(amount <= 0){ alert('請輸入金額'); return; }
+  if(editingTxId){
+    const t = state.txs.find(x=>x.id===editingTxId);
+    if(t){ Object.assign(t,{date,kind,item,amount,note}); }
+    cancelTxEdit(false);
+  }else{
+    const selected = [...document.querySelectorAll('#peopleCheckboxes input[type=checkbox]:checked')].map(x=>x.value);
+    if(!selected.length){ alert('請至少選擇一位人員'); return; }
+    selected.forEach(personId=>state.txs.push({id:uid(),personId,date,kind,item,amount,note}));
+    document.getElementById('txAmount').value = '';
+    document.getElementById('txNote').value = '';
+  }
+  save(); renderAll(); setPanel('reportPanel');
+}
+function cancelTxEdit(shouldRender=true){
+  editingTxId = null;
+  document.getElementById('addTxBtn').textContent = '新增收支';
+  document.getElementById('cancelTxEditBtn').classList.add('hidden');
+  document.getElementById('txAmount').value = '';
+  document.getElementById('txNote').value = '';
+  document.querySelectorAll('#peopleCheckboxes input[type=checkbox]').forEach(c=>{ c.checked=false; c.disabled=false; });
+  if(shouldRender) renderAll();
+}
+window.editTx = function(id){
+  if(!requireAdmin()) return;
+  const t = state.txs.find(x=>x.id===id);
+  if(!t) return;
+  editingTxId = id;
+  document.getElementById('txDate').value = t.date;
+  document.getElementById('txKind').value = t.kind;
+  renderItemOptions();
+  document.getElementById('txItem').value = t.item;
+  document.getElementById('txAmount').value = t.amount;
+  document.getElementById('txNote').value = t.note || '';
+  document.getElementById('addTxBtn').textContent = '儲存修改';
+  document.getElementById('cancelTxEditBtn').classList.remove('hidden');
+  setPanel('entryPanel');
+  setTimeout(()=>{
+    document.querySelectorAll('#peopleCheckboxes input[type=checkbox]').forEach(c=>{ c.checked = c.value === t.personId; c.disabled = true; });
+  }, 0);
+}
+window.deleteTx = function(id){
+  if(!requireAdmin()) return;
+  if(!confirm('確定刪除這筆明細？')) return;
+  state.txs = state.txs.filter(x=>x.id!==id);
+  save(); renderAll();
+}
+function exportCsv(){
+  const personId = document.getElementById('reportPerson').value;
+  const p = state.people.find(x=>x.id===personId);
+  if(!p){ alert('請先選擇人員'); return; }
+  const result = calcPersonRows(personId);
+  const rows = [
+    ['姓名',p.name],
+    ['期初餘額',p.initial],
+    ['收入合計',result.income],
+    ['支出合計',result.expense],
+    ['目前餘額',result.balance],
+    [],
+    ['日期','項目','說明','收入','支出','餘額']
+  ];
+  getFilteredRows(personId).forEach(t=>rows.push([
+    t.date,
+    t.item,
+    t.note || '',
+    t.kind==='income' ? t.amount : '',
+    t.kind==='expense' ? t.amount : '',
+    t.balance
+  ]));
+  const csv = '\ufeff' + rows.map(r=>r.map(cell=>`"${String(cell ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${p.name}_個人代購帳.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function importCsv(evt){
+  if(!requireAdmin()) return;
+  const file = evt.target.files && evt.target.files[0];
+  evt.target.value = '';
+  if(!file) return;
+  const personId = document.getElementById('reportPerson').value;
+  const p = state.people.find(x=>x.id===personId);
+  if(!p){ alert('請先選擇要匯入的人員'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const text = String(e.target.result || '').replace(/^\ufeff/, '');
+      const rows = parseCsv(text).filter(r=>r.some(c=>String(c).trim()!==''));
+      const txs = rowsToTransactions(rows, personId);
+      if(!txs.length){ alert('沒有找到可匯入的收支明細，請確認 CSV 欄位是否包含日期與金額。'); return; }
+      if(!confirm(`即將把 ${txs.length} 筆 CSV 明細追加匯入到「${p.name}」。是否繼續？`)) return;
+      state.txs.push(...txs);
+      save(); renderAll(); setPanel('reportPanel');
+      alert(`已匯入 ${txs.length} 筆明細。`);
+    }catch(err){
+      alert('匯入失敗，請確認 CSV 格式是否正確。');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+function rowsToTransactions(rows, personId){
+  const headerIndex = rows.findIndex(r=>r.some(c=>String(c).trim()==='日期'));
+  if(headerIndex < 0) return [];
+  const headers = rows[headerIndex].map(h=>String(h).trim());
+  const getIdx = names => names.map(n=>headers.indexOf(n)).find(i=>i>=0);
+  const idxDate = getIdx(['日期','交易日期']);
+  const idxItem = getIdx(['項目','分類']);
+  const idxNote = getIdx(['說明','備註','內容']);
+  const idxKind = getIdx(['類型','收支']);
+  const idxAmount = getIdx(['金額']);
+  const idxIncome = getIdx(['收入','收入金額']);
+  const idxExpense = getIdx(['支出','支出金額','扣款']);
+  const txs = [];
+  for(let i=headerIndex+1;i<rows.length;i++){
+    const r = rows[i];
+    const date = parseDate(r[idxDate]);
+    if(!date) continue;
+    let kind = '';
+    let amount = 0;
+    let rawItem = idxItem>=0 ? String(r[idxItem]||'').trim() : '';
+    let note = idxNote>=0 ? String(r[idxNote]||'').trim() : '';
+    if(idxKind>=0 && idxAmount>=0){
+      const kindText = String(r[idxKind]||'');
+      kind = kindText.includes('收入') ? 'income' : 'expense';
+      amount = parseMoney(r[idxAmount]);
+      if(!note) note = rawItem;
+      rawItem = categoryFromItem(kind, rawItem);
+    }else{
+      const income = idxIncome>=0 ? parseMoney(r[idxIncome]) : 0;
+      const expense = idxExpense>=0 ? parseMoney(r[idxExpense]) : 0;
+      if(income > 0){ kind = 'income'; amount = income; }
+      else if(expense > 0){ kind = 'expense'; amount = expense; }
+      else continue;
+      rawItem = categoryFromItem(kind, rawItem);
+    }
+    if(amount <= 0) continue;
+    txs.push({id:uid(),personId,date,kind,item:rawItem,note,amount});
+  }
+  return txs;
+}
+function categoryFromItem(kind, item){
+  item = String(item||'').trim();
+  if(kind === 'income'){
+    if(item.includes('退款')) return '退款';
+    return incomeItems.includes(item) ? item : '儲值';
+  }
+  if(expenseItems.includes(item)) return item;
+  const foodWords = ['餐','飯','便當','牛排','飲料','點心','水果','芒果','水蜜桃','牛奶','油麵','漢堡','豆漿','午餐','晚餐'];
+  return foodWords.some(w=>item.includes(w)) ? '餐點' : '其他';
+}
+function parseMoney(v){
+  const n = Number(String(v ?? '').replace(/NT\$|,|元|\s/g,'').replace(/[()]/g,'').trim());
+  return Number.isFinite(n) ? Math.abs(n) : 0;
+}
+function parseDate(v){
+  const s = String(v ?? '').trim();
+  if(!s) return '';
+  let m = s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m = s.match(/^(\d{1,2})[-\/\.](\d{1,2})$/);
+  if(m){
+    const year = new Date().getFullYear();
+    return `${year}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+  }
+  return '';
+}
+function parseCsv(text){
+  const rows = [];
+  let row = [], cell = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    const next = text[i+1];
+    if(ch === '"'){
+      if(inQuotes && next === '"'){ cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    }else if(ch === ',' && !inQuotes){
+      row.push(cell); cell = '';
+    }else if((ch === '\n' || ch === '\r') && !inQuotes){
+      if(ch === '\r' && next === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    }else{
+      cell += ch;
+    }
+  }
+  row.push(cell); rows.push(row);
+  return rows;
+}
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+
+// 啟動
+initApp();
+</script>
+</body>
+</html>
