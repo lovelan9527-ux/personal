@@ -74,7 +74,7 @@
     body.admin-mode .tab.admin-only{display:block!important}
     body.admin-mode th.admin-only,
     body.admin-mode td.admin-only{display:table-cell!important}
-    body:not(.admin-mode) .tabs{grid-template-columns:1fr}
+    body:not(.admin-mode) .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
     body:not(.admin-mode) #entryPanel,
     body:not(.admin-mode) #peoplePanel{display:none!important}
     main{max-width:1180px;margin:-18px auto 40px;padding:0 16px 24px;position:relative;z-index:2}
@@ -83,7 +83,7 @@
 
     .tabs{
       display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-columns:repeat(4,minmax(0,1fr));
       gap:10px;
       margin-bottom:16px;
       background:rgba(255,255,255,.68);
@@ -144,6 +144,15 @@
     .summary-card .value{font-size:22px;color:var(--primary);font-weight:950;word-break:break-word}
     .summary-card .value.red{color:var(--danger)}
     .summary-card .value.green{color:var(--success)}
+    .summary-card.balance-highlight{
+      background:linear-gradient(135deg,#fff1f0 0%,#fff7f6 48%,#ffffff 100%);
+      border:2px solid rgba(217,45,32,.55);
+      box-shadow:0 14px 34px rgba(217,45,32,.18);
+      position:relative;
+      overflow:hidden;
+    }
+    .summary-card.balance-highlight .label{color:var(--danger);font-size:14px;font-weight:950}
+    .summary-card.balance-highlight .value{color:var(--danger)!important;font-size:30px;font-weight:1000}
 
     .edit-zone{
       background:var(--surface-2);
@@ -202,6 +211,7 @@
 
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
     table{border-collapse:collapse;width:100%;min-width:780px}
+    #balancePanel table{min-width:0}
     th,td{border-bottom:1px solid var(--line);padding:11px 10px;text-align:left;font-size:14px;vertical-align:middle}
     th{background:#eef6ff;color:#103c63;font-weight:950;white-space:nowrap;position:sticky;top:0;z-index:1}
     tbody tr:hover{background:#fbfdff}
@@ -277,6 +287,7 @@
 <main>
   <div class="tabs no-print">
     <button class="tab active" data-panel="reportPanel">個人報表</button>
+    <button class="tab" data-panel="balancePanel">餘額一覽</button>
     <button class="tab admin-only" data-panel="entryPanel">新增收支</button>
     <button class="tab admin-only" data-panel="peoplePanel">新增人員</button>
   </div>
@@ -372,7 +383,7 @@
         <div class="summary-card"><div class="label">支出合計</div><div class="value red" id="statExpense">NT$0</div></div>
       </div>
       <div class="summary-grid" style="grid-template-columns:repeat(1,minmax(0,1fr));margin-bottom:0">
-        <div class="summary-card"><div class="label">目前餘額</div><div class="value" id="statBalance">NT$0</div></div>
+        <div class="summary-card balance-highlight"><div class="label">目前餘額</div><div class="value" id="statBalance">NT$0</div></div>
       </div>
       <div class="hint no-print" style="margin-top:10px">管理員登入後可使用匯入 CSV；一般模式僅可查看、查詢、匯出與列印報表。</div>
     </div>
@@ -399,6 +410,43 @@
             </tr>
           </thead>
           <tbody id="reportBody"></tbody>
+        </table>
+      </div>
+      <div class="hint mobile-note no-print">手機版可左右滑動查看完整表格。</div>
+    </div>
+  </section>
+
+  <section id="balancePanel" class="panel hidden">
+    <div class="card main-card">
+      <div class="card-title">
+        <div>
+          <div class="eyebrow">全部人員</div>
+          <h2>最後餘額明細一覽</h2>
+        </div>
+        <div class="toolbar no-print">
+          <button class="btn secondary" onclick="window.print()">列印 / 另存 PDF</button>
+        </div>
+      </div>
+      <div class="hint no-print" style="margin-top:10px">此頁只顯示所有人員目前最後餘額，方便快速核對。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <div class="eyebrow">總覽表</div>
+          <h2>全部人員餘額明細</h2>
+        </div>
+        <span class="pill no-print" id="overviewRowCountPill">0 人</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>姓名</th>
+              <th class="money">最後餘額</th>
+            </tr>
+          </thead>
+          <tbody id="balanceOverviewBody"></tbody>
         </table>
       </div>
       <div class="hint mobile-note no-print">手機版可左右滑動查看完整表格。</div>
@@ -633,7 +681,7 @@ function calcPersonRows(personId){
 function currentBalance(personId){ return calcPersonRows(personId).balance; }
 
 function setPanel(id){
-  if(!isAdmin && id !== 'reportPanel') id = 'reportPanel';
+  if(!isAdmin && !['reportPanel','balancePanel'].includes(id)) id = 'reportPanel';
   document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.panel===id));
@@ -679,6 +727,7 @@ function renderAll(){
   renderPeopleTable();
   renderReportSelect();
   renderReport();
+  renderBalanceOverview();
 }
 function renderPeopleCheckboxes(){
   const box = document.getElementById('peopleCheckboxes');
@@ -757,6 +806,35 @@ function renderReport(){
     </tr>
   `).join('');
 }
+function renderBalanceOverview(){
+  const body = document.getElementById('balanceOverviewBody');
+  if(!body) return;
+
+  const pillEl = document.getElementById('overviewRowCountPill');
+
+  const rows = state.people.map(p=>{
+    const result = calcPersonRows(p.id);
+    return {
+      name: p.name,
+      balance: result.balance
+    };
+  });
+
+  if(pillEl) pillEl.textContent = `${rows.length} 人`;
+
+  if(!rows.length){
+    body.innerHTML = '<tr><td colspan="2" class="empty">尚無人員</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(row=>`
+    <tr>
+      <td>${escapeHtml(row.name)}</td>
+      <td class="money ${row.balance<0?'negative':''}">${money(row.balance)}</td>
+    </tr>
+  `).join('');
+}
+
 function requireAdmin(){
   if(isAdmin) return true;
   alert('此功能僅限後台管理員操作，請先登入。');
