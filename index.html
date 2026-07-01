@@ -61,6 +61,7 @@
     .sync-status.ok{background:rgba(7,140,76,.22);color:#b7fdd8}
     .sync-status.saving{background:rgba(255,200,0,.18);color:#ffe97a}
     .sync-status.error{background:rgba(217,45,32,.22);color:#ffc9c4}
+    .sync-time{font-size:11px;color:rgba(255,255,255,.78);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);padding:6px 10px;border-radius:999px}
     .admin-only{display:none!important}
     body.admin-mode .admin-only{display:inline-flex!important}
     body.admin-mode .tab.admin-only{display:block!important}
@@ -259,10 +260,12 @@
     <div class="admin-bar no-print">
       <span class="login-status" id="loginStatus">目前模式：查詢模式</span>
       <span class="sync-status ok" id="syncStatus">☁️ 雲端同步</span>
+      <span class="sync-time" id="lastSyncTime">尚未同步</span>
       <input id="adminPassword" type="password" placeholder="後台密碼">
       <button class="btn secondary small" id="adminLoginBtn" type="button">管理員登入</button>
       <button class="btn secondary small hidden" id="adminLogoutBtn" type="button">登出</button>
       <button class="btn secondary small admin-only" id="refreshBtn" type="button">🔄 重新讀取</button>
+      <button class="btn secondary small admin-only" id="initCloudBtn" type="button">🆕 第一次建立雲端資料</button>
     </div>
   </div>
 </header>
@@ -409,7 +412,7 @@
       <div class="grid">
         <div>
           <label for="personName">姓名</label>
-          <input id="personName" type="text" placeholder="例如 紀耘傑">
+          <input id="personName" type="text" placeholder="例如 王小明">
         </div>
         <div>
           <label for="personInitial">期初餘額</label>
@@ -449,14 +452,16 @@
 // ☁️ JSONBin.io 雲端同步設定
 // =====================================================
 const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
-const STORE_KEY = 'fulin_multi_player_simple_ledger_v4'; // 本機備份用
+const STORE_KEY = 'fulin_multi_player_simple_ledger_v4';   // 本機備份用
+const INIT_FLAG_KEY = 'fulin_ledger_cloud_initialized';    // 記錄「雲端是否已被建立過」，避免誤觸覆蓋
 
 // ── 連線設定（所有裝置共用） ──
 const cloudApiKey = '$2a$10$Je0WLLw7Zqcc8dMCjFo7GudCxbRqOitvn06.kROEsTwlMSXu/XqqW';
 const cloudBinId  = '6a41e561da38895dfe0ddf4e';
 const cloudMode   = true;
 
-let isSyncing = false;
+let cloudInitialized = localStorage.getItem(INIT_FLAG_KEY) === '1';
+let saveTimer = null;
 
 // =====================================================
 // Sync status UI
@@ -466,12 +471,24 @@ function setSyncStatus(type, text){
   el.className = 'sync-status ' + type;
   el.textContent = text;
 }
+function updateLastSyncTime(kind){
+  const el = document.getElementById('lastSyncTime');
+  if(!el) return;
+  const timeStr = new Date().toLocaleString('zh-TW',{hour12:false});
+  if(kind === 'save') el.textContent = '✅ 最後儲存成功：' + timeStr;
+  else if(kind === 'load') el.textContent = '最後讀取：' + timeStr;
+}
+function updateInitButtonState(){
+  const btn = document.getElementById('initCloudBtn');
+  if(!btn) return;
+  btn.textContent = cloudInitialized ? '🆕 覆寫雲端資料' : '🆕 第一次建立雲端資料';
+}
 
 // =====================================================
-// 從 JSONBin 讀取資料
+// 從 JSONBin 讀取資料（唯讀，絕不會反過來覆蓋雲端）
 // =====================================================
 async function cloudLoad(){
-  if(!cloudMode) return null;
+  if(!cloudMode) return { ok:false };
   setSyncStatus('saving','⏳ 讀取中…');
   try{
     const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
@@ -479,44 +496,55 @@ async function cloudLoad(){
     });
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    setSyncStatus('ok','☁️ 雲端同步');
-    return data;
+    setSyncStatus('ok','☁️ 雲端連線正常');
+    updateLastSyncTime('load');
+    return { ok:true, data };
   }catch(e){
-    setSyncStatus('error','❌ 讀取失敗');
+    setSyncStatus('error','❌ 雲端讀取失敗（顯示本機備份，不會覆蓋雲端）');
     console.error('cloudLoad', e);
-    return null;
+    return { ok:false };
   }
 }
 
 // =====================================================
-// 寫入資料到 JSONBin（有 debounce 防止過多請求）
+// 寫入資料到 JSONBin（一般編輯使用，有 debounce 防止過多請求）
 // =====================================================
-let saveTimer = null;
-async function cloudSave(stateToSave){
-  if(!cloudMode){ localSave(stateToSave); return; }
+function cloudSave(stateToSave){
   localSave(stateToSave); // 先存本機備份
+  if(!cloudMode) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async ()=>{
-    isSyncing = true;
-    setSyncStatus('saving','⏫ 儲存中…');
-    try{
-      const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}`, {
-        method: 'PUT',
-        headers:{
-          'Content-Type': 'application/json',
-          'X-Master-Key': cloudApiKey
-        },
-        body: JSON.stringify(stateToSave)
-      });
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      setSyncStatus('ok','☁️ 已同步');
-    }catch(e){
-      setSyncStatus('error','❌ 儲存失敗');
-      console.error('cloudSave', e);
-    }finally{
-      isSyncing = false;
-    }
-  }, 600);
+  saveTimer = setTimeout(()=>{ cloudSaveNow(stateToSave); }, 600);
+}
+
+// 立即寫入雲端（不 debounce）—「建立雲端資料」按鈕與需要確認結果時使用
+async function cloudSaveNow(stateToSave){
+  setSyncStatus('saving','⏫ 儲存中…');
+  try{
+    const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}`, {
+      method: 'PUT',
+      headers:{
+        'Content-Type': 'application/json',
+        'X-Master-Key': cloudApiKey
+      },
+      body: JSON.stringify(stateToSave)
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    cloudInitialized = true;
+    localStorage.setItem(INIT_FLAG_KEY,'1');
+    updateInitButtonState();
+    setSyncStatus('ok','✅ 已儲存並同步');
+    updateLastSyncTime('save');
+    // 2.5 秒後把狀態文字換回一般顯示，但保留「最後同步時間」
+    setTimeout(()=>{
+      const el = document.getElementById('syncStatus');
+      if(el.textContent.includes('已儲存並同步')) setSyncStatus('ok','☁️ 雲端同步');
+    }, 2500);
+    return true;
+  }catch(e){
+    setSyncStatus('error','❌ 儲存失敗，請檢查網路後再試一次');
+    console.error('cloudSaveNow', e);
+    return false;
+  }
 }
 
 function localSave(s){
@@ -540,63 +568,79 @@ let editingPersonId = null;
 let editingTxId = null;
 let isAdmin = sessionStorage.getItem('fulin_ledger_admin') === '1';
 
+// 已移除預設示範人員（原本會自動帶入「紀耘傑」的假資料）
 function seedState(){
-  const personId = uid();
+  return { people:[], txs:[] };
+}
+function normalizeState(data){
   return {
-    people:[{id:personId,name:'紀耘傑',initial:1028}],
-    txs:[
-      {id:uid(),personId,date:'2026-04-28',kind:'expense',item:'餐點',note:'飲料',amount:64},
-      {id:uid(),personId,date:'2026-04-29',kind:'expense',item:'其他',note:'導覽',amount:150},
-      {id:uid(),personId,date:'2026-05-01',kind:'expense',item:'餐點',note:'牛排',amount:210},
-      {id:uid(),personId,date:'2026-05-02',kind:'expense',item:'餐點',note:'排骨飯',amount:130},
-      {id:uid(),personId,date:'2026-05-01',kind:'expense',item:'餐點',note:'晚餐便當',amount:260},
-      {id:uid(),personId,date:'2026-05-09',kind:'expense',item:'餐點',note:'午餐',amount:110},
-      {id:uid(),personId,date:'2026-05-09',kind:'expense',item:'餐點',note:'點心X2',amount:50},
-      {id:uid(),personId,date:'2026-05-16',kind:'expense',item:'餐點',note:'午餐',amount:100},
-      {id:uid(),personId,date:'2026-05-19',kind:'income',item:'儲值',note:'水蜜桃',amount:250},
-      {id:uid(),personId,date:'2026-05-19',kind:'expense',item:'餐點',note:'油麵',amount:35},
-      {id:uid(),personId,date:'2026-05-20',kind:'expense',item:'餐點',note:'芒果',amount:110},
-      {id:uid(),personId,date:'2026-05-29',kind:'income',item:'儲值',note:'好市多等',amount:1244},
-      {id:uid(),personId,date:'2026-05-30',kind:'expense',item:'餐點',note:'午餐',amount:140},
-      {id:uid(),personId,date:'2026-05-31',kind:'income',item:'儲值',note:'水果+牛',amount:613},
-      {id:uid(),personId,date:'2026-06-11',kind:'expense',item:'餐點',note:'米漢堡+關饌聚',amount:256},
-      {id:uid(),personId,date:'2026-06-16',kind:'income',item:'儲值',note:'水果',amount:1012},
-      {id:uid(),personId,date:'2026-06-19',kind:'expense',item:'餐點',note:'午餐',amount:165},
-      {id:uid(),personId,date:'2026-06-26',kind:'expense',item:'餐點',note:'義美牛奶',amount:540}
-    ]
+    people: Array.isArray(data && data.people) ? data.people : [],
+    txs: Array.isArray(data && data.txs) ? data.txs : []
   };
 }
 
 // =====================================================
 // 初始化
+//
+// 修正重點：
+// 1) 雲端讀取「失敗」時，只用本機備份顯示，絕對不會自動把資料寫回雲端
+//    （這就是之前「明明改過又被還原成原始資料」的成因：舊版程式在讀取失敗
+//    或雲端是空的情況下，會自動把本機備份或示範資料覆蓋回雲端）。
+// 2) 只有雲端「讀取成功且確實有資料」時才採用雲端資料為主；
+//    若雲端「讀取成功但是空的」，且從未被建立過，則不會自動建立，
+//    而是提示管理員手動按「第一次建立雲端資料」按鈕，避免誤觸覆蓋。
 // =====================================================
 async function initApp(){
-  const remote = await cloudLoad();
-  if(remote && (remote.people || remote.txs)){
-    state = remote;
-    localSave(state);
+  const result = await cloudLoad();
+  if(result.ok){
+    const normalized = normalizeState(result.data);
+    const hasContent = normalized.people.length > 0 || normalized.txs.length > 0;
+    if(hasContent || cloudInitialized){
+      // 雲端資料有效（包含「曾經建立過、後來被清空」的合法空狀態）
+      state = normalized;
+      localSave(state);
+    } else {
+      // 雲端從未被建立過，不自動覆寫，改用本機備份顯示並提示管理員
+      const local = localLoad();
+      state = local || seedState();
+      setSyncStatus('error','⚠️ 雲端尚未建立資料，請登入管理員後按「第一次建立雲端資料」');
+    }
   } else {
+    // 讀取失敗（例如網路不穩）：只顯示本機備份，不會回寫雲端
     const local = localLoad();
     state = local || seedState();
-    await cloudSave(state);
   }
 
   document.getElementById('txDate').value = today();
   applyAdminMode();
   renderItemOptions();
   renderAll();
+  updateInitButtonState();
 }
 
 document.getElementById('refreshBtn').addEventListener('click', async ()=>{
-  const remote = await cloudLoad();
-  if(remote && (remote.people || remote.txs)){
-    state = remote;
+  const result = await cloudLoad();
+  if(result.ok){
+    state = normalizeState(result.data);
     localSave(state);
     renderAll();
     alert('已從雲端重新讀取最新資料！');
   } else {
     alert('無法從雲端讀取，請確認連線設定。');
   }
+});
+
+document.getElementById('initCloudBtn').addEventListener('click', async ()=>{
+  if(!requireAdmin()) return;
+  const btn = document.getElementById('initCloudBtn');
+  const msg = cloudInitialized
+    ? '雲端資料先前已經建立過。這個操作會用「目前畫面上的資料」整份覆蓋雲端，確定要繼續嗎？'
+    : '即將以目前畫面上的資料，第一次建立雲端資料庫。建立完成後，之後的新增／編輯／刪除都會自動同步到雲端。確定要建立嗎？';
+  if(!confirm(msg)) return;
+  btn.disabled = true;
+  const ok = await cloudSaveNow(state);
+  btn.disabled = false;
+  if(ok) alert('雲端資料已建立／更新完成！');
 });
 
 // =====================================================
