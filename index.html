@@ -508,9 +508,13 @@ const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
 const STORE_KEY = 'fulin_multi_player_simple_ledger_v4';   // 本機備份用
 
 // ── 連線設定（所有裝置共用） ──
-const cloudApiKey = '$2a$10$Je0WLLw7Zqcc8dMCjFo7GudCxbRqOitvn06.kROEsTwlMSXu/XqqW';
+const cloudApiKey = '$2a$10$QyCt5IWDhyNP5GvGpojKDeXU3KvqCHe/HzA5Yg0WqM8M0drgQqfRC';
 const cloudBinId  = '6a41e561da38895dfe0ddf4e';
 const cloudMode   = true;
+
+// 重要：如果使用 JSONBin 後台建立的 Access Key，header 必須是 X-Access-Key。
+// 若你未來改用 Master Key，本檔也會自動 fallback 嘗試 X-Master-Key。
+const cloudPrimaryKeyHeader = 'X-Access-Key';
 
 let saveTimer = null;
 let writeBusy = false;
@@ -538,56 +542,91 @@ function updateLastSyncTime(kind){
 }
 
 // =====================================================
+// JSONBin 請求工具
+// 重要：Access Key 要用 X-Access-Key；Master Key 要用 X-Master-Key。
+// 這裡會先照 cloudPrimaryKeyHeader 嘗試，若 401/403 再自動換另一種 header。
+// =====================================================
+function makeJsonBinHeaders(baseHeaders={}, keyHeaderName=cloudPrimaryKeyHeader){
+  const headers = {...baseHeaders};
+  delete headers['X-Master-Key'];
+  delete headers['X-Access-Key'];
+  headers[keyHeaderName] = cloudApiKey;
+  return headers;
+}
+async function jsonBinFetch(url, options={}){
+  const primary = cloudPrimaryKeyHeader || 'X-Access-Key';
+  const fallback = primary === 'X-Access-Key' ? 'X-Master-Key' : 'X-Access-Key';
+  const attempts = [primary, fallback];
+  let lastError = null;
+
+  for(const keyHeader of attempts){
+    let res;
+    try{
+      res = await fetch(url, {
+        ...options,
+        headers: makeJsonBinHeaders(options.headers || {}, keyHeader)
+      });
+    }catch(e){
+      lastError = e;
+      continue;
+    }
+
+    if(res.ok) return res;
+
+    let errText = '';
+    try{ errText = await res.text(); }catch(e){}
+    lastError = new Error(`HTTP ${res.status}｜${keyHeader}${errText ? '｜' + errText.slice(0,160) : ''}`);
+
+    // 權限錯誤才換 header 重試；其他如 Bin ID 錯誤、網路錯誤就不要重複打擾。
+    if(![401,403].includes(res.status)) break;
+  }
+
+  throw lastError || new Error('JSONBin request failed');
+}
+
+// =====================================================
 // 從 JSONBin 讀取資料（唯讀，絕不會反過來覆蓋雲端）
 // =====================================================
 async function cloudLoad(){
   if(!cloudMode) return { ok:false };
   setSyncStatus('saving','⏳ 讀取中…');
   try{
-    const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
-      headers:{ 'X-Master-Key': cloudApiKey, 'X-Bin-Meta': 'false' }
+    const res = await jsonBinFetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
+      headers:{ 'X-Bin-Meta': 'false' }
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     setSyncStatus('ok','☁️ 雲端連線正常');
     updateLastSyncTime('load');
     return { ok:true, data };
   }catch(e){
+    const msg = e && e.message ? e.message : String(e);
     setSyncStatus('error','❌ 雲端讀取失敗（顯示本機備份，不會覆蓋雲端）');
     console.error('cloudLoad', e);
-    return { ok:false };
+    return { ok:false, error:msg };
   }
 }
 
 // =====================================================
-// 寫入資料到 JSONBin（一般編輯使用，有 debounce 防止過多請求）
+// 舊版儲存入口保留但不再使用：避免任何地方誤用 debounce 整包覆蓋
 // =====================================================
 function cloudSave(stateToSave){
-  localSave(stateToSave); // 先存本機備份
-  if(!cloudMode) return;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{ cloudSaveNow(stateToSave); }, 600);
+  console.warn('cloudSave() 已停用：請使用 commitCloudMutation()。', stateToSave);
 }
 
-// 立即寫入雲端（不 debounce）—「建立雲端資料」按鈕與需要確認結果時使用
+// 立即寫入雲端（不 debounce）— 安全寫入流程內部使用
 async function cloudSaveNow(stateToSave, options={}){
   const showSuccess = options.showSuccess !== false;
   const savingText = options.savingText || '⏫ 儲存中…';
   setSyncStatus('saving', savingText);
   try{
-    const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}`, {
+    const res = await jsonBinFetch(`${JSONBIN_BASE}/${cloudBinId}`, {
       method: 'PUT',
-      headers:{
-        'Content-Type': 'application/json',
-        'X-Master-Key': cloudApiKey
-      },
+      headers:{ 'Content-Type': 'application/json' },
       body: JSON.stringify(stateToSave)
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
     if(showSuccess){
       setSyncStatus('ok','✅ 已儲存並同步');
       updateLastSyncTime('save');
-      // 2.5 秒後把狀態文字換回一般顯示，但保留「最後同步時間」
       setTimeout(()=>{
         const el = document.getElementById('syncStatus');
         if(el.textContent.includes('已儲存並同步')) setSyncStatus('ok','☁️ 雲端同步');
@@ -595,7 +634,7 @@ async function cloudSaveNow(stateToSave, options={}){
     }
     return true;
   }catch(e){
-    setSyncStatus('error','❌ 儲存失敗，請檢查網路後再試一次');
+    setSyncStatus('error','❌ 儲存失敗，請檢查 JSONBin 權限或網路後再試一次');
     console.error('cloudSaveNow', e);
     return false;
   }
@@ -603,10 +642,9 @@ async function cloudSaveNow(stateToSave, options={}){
 
 async function fetchCloudState(){
   if(!cloudMode) throw new Error('CLOUD_DISABLED');
-  const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
-    headers:{ 'X-Master-Key': cloudApiKey, 'X-Bin-Meta': 'false' }
+  const res = await jsonBinFetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
+    headers:{ 'X-Bin-Meta': 'false' }
   });
-  if(!res.ok) throw new Error('HTTP ' + res.status);
   return normalizeState(await res.json());
 }
 
