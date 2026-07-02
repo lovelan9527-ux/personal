@@ -354,7 +354,7 @@
         <div class="toolbar no-print">
           <button class="btn secondary admin-only" id="importCsvBtn">匯入 CSV</button>
           <input id="importCsvInput" type="file" accept=".csv,text/csv" class="hidden">
-          <button class="btn secondary" id="exportCsvBtn">匯出 CSV</button>
+          <button class="btn secondary" id="exportCsvBtn">匯出全部整合 CSV</button>
           <button class="btn secondary" onclick="window.print()">列印 / 另存 PDF</button>
         </div>
       </div>
@@ -513,6 +513,13 @@ const cloudBinId  = '6a41e561da38895dfe0ddf4e';
 const cloudMode   = true;
 
 let saveTimer = null;
+let writeBusy = false;
+const CLIENT_ID_KEY = STORE_KEY + '_client_id';
+let cloudClientId = sessionStorage.getItem(CLIENT_ID_KEY);
+if(!cloudClientId){
+  cloudClientId = 'client_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  sessionStorage.setItem(CLIENT_ID_KEY, cloudClientId);
+}
 
 // =====================================================
 // Sync status UI
@@ -563,8 +570,10 @@ function cloudSave(stateToSave){
 }
 
 // 立即寫入雲端（不 debounce）—「建立雲端資料」按鈕與需要確認結果時使用
-async function cloudSaveNow(stateToSave){
-  setSyncStatus('saving','⏫ 儲存中…');
+async function cloudSaveNow(stateToSave, options={}){
+  const showSuccess = options.showSuccess !== false;
+  const savingText = options.savingText || '⏫ 儲存中…';
+  setSyncStatus('saving', savingText);
   try{
     const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}`, {
       method: 'PUT',
@@ -575,18 +584,165 @@ async function cloudSaveNow(stateToSave){
       body: JSON.stringify(stateToSave)
     });
     if(!res.ok) throw new Error('HTTP ' + res.status);
-    setSyncStatus('ok','✅ 已儲存並同步');
-    updateLastSyncTime('save');
-    // 2.5 秒後把狀態文字換回一般顯示，但保留「最後同步時間」
-    setTimeout(()=>{
-      const el = document.getElementById('syncStatus');
-      if(el.textContent.includes('已儲存並同步')) setSyncStatus('ok','☁️ 雲端同步');
-    }, 2500);
+    if(showSuccess){
+      setSyncStatus('ok','✅ 已儲存並同步');
+      updateLastSyncTime('save');
+      // 2.5 秒後把狀態文字換回一般顯示，但保留「最後同步時間」
+      setTimeout(()=>{
+        const el = document.getElementById('syncStatus');
+        if(el.textContent.includes('已儲存並同步')) setSyncStatus('ok','☁️ 雲端同步');
+      }, 2500);
+    }
     return true;
   }catch(e){
     setSyncStatus('error','❌ 儲存失敗，請檢查網路後再試一次');
     console.error('cloudSaveNow', e);
     return false;
+  }
+}
+
+async function fetchCloudState(){
+  if(!cloudMode) throw new Error('CLOUD_DISABLED');
+  const res = await fetch(`${JSONBIN_BASE}/${cloudBinId}/latest`, {
+    headers:{ 'X-Master-Key': cloudApiKey, 'X-Bin-Meta': 'false' }
+  });
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  return normalizeState(await res.json());
+}
+
+function wait(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
+function cloneState(s){ return JSON.parse(JSON.stringify(normalizeState(s))); }
+function isActiveLock(lock){
+  if(!lock || !lock.expiresAt) return false;
+  const t = Date.parse(lock.expiresAt);
+  return Number.isFinite(t) && Date.now() < t;
+}
+function setWriteBusy(isBusy){
+  writeBusy = isBusy;
+  ['addTxBtn','savePersonBtn','importCsvBtn','adminLogoutBtn'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = isBusy;
+  });
+}
+async function acquireCloudLock(lockId){
+  for(let attempt=1; attempt<=8; attempt++){
+    const latest = await fetchCloudState();
+    const lock = latest.meta && latest.meta.writeLock;
+    if(lock && lock.id !== lockId && isActiveLock(lock)){
+      setSyncStatus('saving','⏳ 其他裝置正在寫入，等待合併…');
+      await wait(350 + Math.floor(Math.random()*450));
+      continue;
+    }
+
+    const locked = cloneState(latest);
+    locked.meta = locked.meta || {};
+    locked.meta.writeLock = {
+      id: lockId,
+      owner: cloudClientId,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15000).toISOString()
+    };
+
+    const lockSaved = await cloudSaveNow(locked, {showSuccess:false, savingText:'🔐 鎖定雲端資料中…'});
+    if(!lockSaved) throw new Error('LOCK_SAVE_FAILED');
+
+    await wait(180);
+    const confirmed = await fetchCloudState();
+    const confirmedLock = confirmed.meta && confirmed.meta.writeLock;
+    if(confirmedLock && confirmedLock.id === lockId && confirmedLock.owner === cloudClientId){
+      return confirmed;
+    }
+
+    await wait(350 + Math.floor(Math.random()*550));
+  }
+  throw new Error('LOCK_FAILED');
+}
+async function releaseCloudLock(lockId){
+  try{
+    const latest = await fetchCloudState();
+    const lock = latest.meta && latest.meta.writeLock;
+    if(lock && lock.id === lockId && lock.owner === cloudClientId){
+      const unlocked = cloneState(latest);
+      if(unlocked.meta) delete unlocked.meta.writeLock;
+      await cloudSaveNow(unlocked, {showSuccess:false, savingText:'🔓 解除雲端鎖定…'});
+    }
+  }catch(e){
+    console.warn('releaseCloudLock', e);
+  }
+}
+async function commitCloudMutation(label, mutator, verifier){
+  if(!requireAdmin()) return false;
+  if(writeBusy){ alert('上一筆資料正在同步，請稍候再操作。'); return false; }
+  setWriteBusy(true);
+  const lockId = uid();
+  const operationId = uid();
+  try{
+    if(!cloudMode){
+      const localNext = cloneState(state);
+      const localResult = mutator(localNext);
+      if(localResult === false || (localResult && localResult.cancelled)) return false;
+      state = normalizeState(localNext);
+      localSave(state);
+      renderAll();
+      return localResult || true;
+    }
+
+    const lockedLatest = await acquireCloudLock(lockId);
+    const next = cloneState(lockedLatest);
+    const result = mutator(next);
+    if(result === false || (result && result.cancelled)){
+      await releaseCloudLock(lockId);
+      return false;
+    }
+
+    next.meta = next.meta || {};
+    delete next.meta.writeLock;
+    next.meta.lastWrite = {
+      id: operationId,
+      label,
+      clientId: cloudClientId,
+      at: new Date().toISOString()
+    };
+
+    const saved = await cloudSaveNow(next, {savingText:'⏫ 合併最新資料並寫入中…'});
+    if(!saved) throw new Error('WRITE_FAILED');
+
+    await wait(450);
+    let verified = await fetchCloudState();
+    let ok = verifier ? verifier(verified, result, next) : true;
+    if(!ok){
+      await wait(700);
+      verified = await fetchCloudState();
+      ok = verifier ? verifier(verified, result, next) : true;
+    }
+    if(!ok) throw new Error('VERIFY_FAILED');
+
+    state = normalizeState(verified);
+    localSave(state);
+    renderAll();
+    setSyncStatus('ok','✅ 已對齊最新雲端資料並完成驗證');
+    updateLastSyncTime('save');
+    setTimeout(()=>{
+      const el = document.getElementById('syncStatus');
+      if(el && el.textContent.includes('完成驗證')) setSyncStatus('ok','☁️ 雲端同步');
+    }, 3000);
+    return result || true;
+  }catch(e){
+    console.error('commitCloudMutation', e);
+    await releaseCloudLock(lockId);
+    setSyncStatus('error','❌ 寫入未完成，已停止覆蓋，請重新讀取後再試');
+    try{
+      const latest = await fetchCloudState();
+      state = normalizeState(latest);
+      localSave(state);
+      renderAll();
+    }catch(loadErr){
+      console.error('reload latest after write error', loadErr);
+    }
+    alert('寫入雲端未完成或驗證失敗。系統已停止本次覆蓋，請重新整理或稍後再試。');
+    return false;
+  }finally{
+    setWriteBusy(false);
   }
 }
 
@@ -616,9 +772,11 @@ function seedState(){
   return { people:[], txs:[] };
 }
 function normalizeState(data){
+  const safe = data && typeof data === 'object' ? data : {};
   return {
-    people: Array.isArray(data && data.people) ? data.people : [],
-    txs: Array.isArray(data && data.txs) ? data.txs : []
+    people: Array.isArray(safe.people) ? safe.people : [],
+    txs: Array.isArray(safe.txs) ? safe.txs : [],
+    meta: safe.meta && typeof safe.meta === 'object' ? safe.meta : {}
   };
 }
 
@@ -652,7 +810,7 @@ async function initApp(){
 // =====================================================
 // save / uid / helpers（原有邏輯不變）
 // =====================================================
-function save(){ cloudSave(state); }
+function save(){ console.warn('save() 已停用：請使用 commitCloudMutation() 以避免覆蓋回朔。'); }
 function uid(){ return 'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function money(n){
   n = Number(n||0);
@@ -665,7 +823,7 @@ function shortDate(iso){
   if(!m || !d) return iso;
   return `${Number(m)}/${Number(d)}`;
 }
-function today(){ return new Date().toISOString().slice(0,10); }
+function today(){ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function calcPersonRows(personId){
   const p = state.people.find(x=>x.id===personId);
   if(!p) return {rows:[],income:0,expense:0,balance:0};
@@ -876,20 +1034,35 @@ function getFilteredRows(personId){
     return matchKeyword && matchStart && matchEnd;
   });
 }
-function addOrUpdatePerson(){
+async function addOrUpdatePerson(){
   if(!requireAdmin()) return;
   const name = document.getElementById('personName').value.trim();
   const initial = Number(document.getElementById('personInitial').value || 0);
   if(!name){ alert('請輸入姓名'); return; }
-  if(editingPersonId){
-    const p = state.people.find(x=>x.id===editingPersonId);
-    if(p){ p.name = name; p.initial = initial; }
-    cancelPersonEdit(false);
-  }else{
-    state.people.push({id:uid(),name,initial});
-    clearPersonForm();
-  }
-  save(); renderAll();
+  const targetId = editingPersonId;
+  const result = await commitCloudMutation(
+    targetId ? '編輯人員' : '新增人員',
+    latest=>{
+      if(targetId){
+        const p = latest.people.find(x=>x.id===targetId);
+        if(!p){ alert('雲端最新版已找不到這位人員，可能已被其他裝置刪除。'); return false; }
+        p.name = name;
+        p.initial = initial;
+        return {personId: targetId, name, initial, action:'update'};
+      }
+      const id = uid();
+      latest.people.push({id,name,initial});
+      return {personId:id, name, initial, action:'add'};
+    },
+    (latest, result)=>{
+      const p = latest.people.find(x=>x.id===result.personId);
+      return !!p && p.name === result.name && Number(p.initial||0) === Number(result.initial||0);
+    }
+  );
+  if(!result) return;
+  if(targetId) cancelPersonEdit(false);
+  else clearPersonForm();
+  renderAll();
 }
 function clearPersonForm(){
   document.getElementById('personName').value = '';
@@ -913,16 +1086,22 @@ window.editPerson = function(id){
   document.getElementById('cancelPersonEditBtn').classList.remove('hidden');
   setPanel('peoplePanel');
 }
-window.deletePerson = function(id){
+window.deletePerson = async function(id){
   if(!requireAdmin()) return;
   const p = state.people.find(x=>x.id===id);
-  if(!p) return;
-  if(!confirm(`確定刪除「${p.name}」？此人員的所有收支也會一起刪除。`)) return;
-  state.people = state.people.filter(x=>x.id!==id);
-  state.txs = state.txs.filter(x=>x.personId!==id);
-  save(); renderAll();
+  const name = p ? p.name : '此人員';
+  if(!confirm(`確定刪除「${name}」？此人員的所有收支也會一起刪除。`)) return;
+  await commitCloudMutation(
+    '刪除人員',
+    latest=>{
+      latest.people = latest.people.filter(x=>x.id!==id);
+      latest.txs = latest.txs.filter(x=>x.personId!==id);
+      return {personId:id};
+    },
+    (latest, result)=>!latest.people.some(x=>x.id===result.personId) && !latest.txs.some(x=>x.personId===result.personId)
+  );
 }
-function addOrUpdateTx(){
+async function addOrUpdateTx(){
   if(!requireAdmin()) return;
   const date = document.getElementById('txDate').value;
   const kind = document.getElementById('txKind').value;
@@ -931,18 +1110,41 @@ function addOrUpdateTx(){
   const note = document.getElementById('txNote').value.trim();
   if(!date){ alert('請選擇日期'); return; }
   if(amount <= 0){ alert('請輸入金額'); return; }
-  if(editingTxId){
-    const t = state.txs.find(x=>x.id===editingTxId);
-    if(t){ Object.assign(t,{date,kind,item,amount,note}); }
-    cancelTxEdit(false);
-  }else{
-    const selected = [...document.querySelectorAll('#peopleCheckboxes input[type=checkbox]:checked')].map(x=>x.value);
-    if(!selected.length){ alert('請至少選擇一位人員'); return; }
-    selected.forEach(personId=>state.txs.push({id:uid(),personId,date,kind,item,amount,note}));
+  const targetId = editingTxId;
+  const selected = [...document.querySelectorAll('#peopleCheckboxes input[type=checkbox]:checked')].map(x=>x.value);
+  if(!targetId && !selected.length){ alert('請至少選擇一位人員'); return; }
+
+  const result = await commitCloudMutation(
+    targetId ? '編輯收支' : '新增收支',
+    latest=>{
+      if(targetId){
+        const t = latest.txs.find(x=>x.id===targetId);
+        if(!t){ alert('雲端最新版已找不到這筆明細，可能已被其他裝置刪除。'); return false; }
+        Object.assign(t,{date,kind,item,amount,note});
+        return {txIds:[targetId], date, kind, item, amount, note, action:'update'};
+      }
+      const validPeople = selected.filter(personId=>latest.people.some(p=>p.id===personId));
+      if(!validPeople.length){ alert('雲端最新版已找不到勾選的人員，請重新選擇。'); return false; }
+      const txIds = [];
+      validPeople.forEach(personId=>{
+        const id = uid();
+        txIds.push(id);
+        latest.txs.push({id,personId,date,kind,item,amount,note});
+      });
+      return {txIds, date, kind, item, amount, note, action:'add'};
+    },
+    (latest, result)=>result.txIds.every(id=>{
+      const t = latest.txs.find(x=>x.id===id);
+      return !!t && t.date===result.date && t.kind===result.kind && t.item===result.item && Number(t.amount||0)===Number(result.amount||0);
+    })
+  );
+  if(!result) return;
+  if(targetId) cancelTxEdit(false);
+  else{
     document.getElementById('txAmount').value = '';
     document.getElementById('txNote').value = '';
   }
-  save(); renderAll(); setPanel('reportPanel');
+  renderAll(); setPanel('reportPanel');
 }
 function cancelTxEdit(shouldRender=true){
   editingTxId = null;
@@ -971,40 +1173,65 @@ window.editTx = function(id){
     document.querySelectorAll('#peopleCheckboxes input[type=checkbox]').forEach(c=>{ c.checked = c.value === t.personId; c.disabled = true; });
   }, 0);
 }
-window.deleteTx = function(id){
+window.deleteTx = async function(id){
   if(!requireAdmin()) return;
   if(!confirm('確定刪除這筆明細？')) return;
-  state.txs = state.txs.filter(x=>x.id!==id);
-  save(); renderAll();
+  await commitCloudMutation(
+    '刪除收支',
+    latest=>{
+      latest.txs = latest.txs.filter(x=>x.id!==id);
+      return {txId:id};
+    },
+    (latest, result)=>!latest.txs.some(x=>x.id===result.txId)
+  );
 }
 function exportCsv(){
-  const personId = document.getElementById('reportPerson').value;
-  const p = state.people.find(x=>x.id===personId);
-  if(!p){ alert('請先選擇人員'); return; }
-  const result = calcPersonRows(personId);
+  if(!state.people.length){ alert('目前沒有任何人員可匯出'); return; }
+  const exportTime = new Date().toLocaleString('zh-TW',{hour12:false});
   const rows = [
-    ['姓名',p.name],
-    ['期初餘額',p.initial],
-    ['收入合計',result.income],
-    ['支出合計',result.expense],
-    ['目前餘額',result.balance],
+    ['福林少棒｜個人代購帳｜全部人員整合報表'],
+    ['匯出時間', exportTime],
+    ['人員數', state.people.length],
+    ['明細筆數', state.txs.length],
     [],
-    ['日期','項目','說明','收入','支出','餘額']
+    ['全部人員餘額總表'],
+    ['姓名','期初餘額','收入合計','支出合計','目前餘額']
   ];
-  getFilteredRows(personId).forEach(t=>rows.push([
-    t.date,
-    t.item,
-    t.note || '',
-    t.kind==='income' ? t.amount : '',
-    t.kind==='expense' ? t.amount : '',
-    t.balance
-  ]));
-  const csv = '\ufeff' + rows.map(r=>r.map(cell=>`"${String(cell ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+
+  state.people.forEach(p=>{
+    const result = calcPersonRows(p.id);
+    rows.push([p.name, p.initial, result.income, result.expense, result.balance]);
+  });
+
+  rows.push([]);
+  rows.push(['全部人員收支明細']);
+  rows.push(['姓名','日期','項目','說明','收入','支出','單筆後餘額']);
+
+  state.people.forEach(p=>{
+    const result = calcPersonRows(p.id);
+    result.rows.forEach(t=>rows.push([
+      p.name,
+      t.date,
+      t.item,
+      t.note || '',
+      t.kind==='income' ? t.amount : '',
+      t.kind==='expense' ? t.amount : '',
+      t.balance
+    ]));
+  });
+
+  rows.push([]);
+  rows.push(['原始資料備份']);
+  rows.push(['people_json', JSON.stringify(state.people)]);
+  rows.push(['txs_json', JSON.stringify(state.txs)]);
+
+  const csv = '﻿' + rows.map(r=>r.map(cell=>`"${String(cell ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  const dateStr = today();
   a.href = url;
-  a.download = `${p.name}_個人代購帳.csv`;
+  a.download = `福林少棒_個人代購帳_全部整合報表_${dateStr}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1019,16 +1246,27 @@ function importCsv(evt){
   const p = state.people.find(x=>x.id===personId);
   if(!p){ alert('請先選擇要匯入的人員'); return; }
   const reader = new FileReader();
-  reader.onload = function(e){
+  reader.onload = async function(e){
     try{
-      const text = String(e.target.result || '').replace(/^\ufeff/, '');
+      const text = String(e.target.result || '').replace(/^﻿/, '');
       const rows = parseCsv(text).filter(r=>r.some(c=>String(c).trim()!==''));
       const txs = rowsToTransactions(rows, personId);
       if(!txs.length){ alert('沒有找到可匯入的收支明細，請確認 CSV 欄位是否包含日期與金額。'); return; }
       if(!confirm(`即將把 ${txs.length} 筆 CSV 明細追加匯入到「${p.name}」。是否繼續？`)) return;
-      state.txs.push(...txs);
-      save(); renderAll(); setPanel('reportPanel');
-      alert(`已匯入 ${txs.length} 筆明細。`);
+      const txIds = txs.map(t=>t.id);
+      const result = await commitCloudMutation(
+        '匯入 CSV',
+        latest=>{
+          if(!latest.people.some(x=>x.id===personId)){
+            alert('雲端最新版已找不到這位人員，請重新選擇後再匯入。');
+            return false;
+          }
+          latest.txs.push(...txs);
+          return {txIds};
+        },
+        (latest, result)=>result.txIds.every(id=>latest.txs.some(t=>t.id===id))
+      );
+      if(result){ setPanel('reportPanel'); alert(`已匯入 ${txs.length} 筆明細，並完成雲端驗證。`); }
     }catch(err){
       alert('匯入失敗，請確認 CSV 格式是否正確。');
       console.error(err);
